@@ -106,7 +106,6 @@ while True:
         filter_result = process_uart_data(data)
         #filter_result[0] : x, filter_result[1] : y
         if filter_result[0]!= -1 and filter_result[1]!= -1:
-        # if filter_result[0]!= -1 and filter_result[1]!= -1:
             if filter_result[1] > 100: #공이 카메라 화면 기준으로 아래에 위치 = 로봇에 가까워졌다
                 robot.straight(100) #앞으로 이동
                 grab('motion3') #공을 잡기
@@ -119,16 +118,24 @@ while True:
                 time.sleep(0.5) #동작간 딜레이
                 shoot('zero')
                 grab('motion2') 
-            else: #공이 카메라 화면 기준 멀리 위치해 있으면 chase한다
+            else: #공이 카메라 화면 기준 멀리 위치해 있으면 chase한다 
+                distance = ultra.distance()
+                print(distance)
+                if distance <= 100: #10cm 이내에 물체가 탐지되었을 때 
+                    robot.straight(-150)
+                    robot.turn(-100)
+                robot.straight(80) #공을 인지하지 못했을 때 기본 알고리즘 
+                robot.turn(30)
                 pd_control(filter_result[0], kp=0.5, kd=0.1, power=100)
-        else: 
-            distance = ultra.distance()
-            print(distance)
-            if distance <= 100:
-                robot.straight(-150)
-                robot.turn(-100)
-            robot.straight(80)
-            robot.turn(30)
+        # else: 
+        #     distance = ultra.distance()
+        #     print(distance)
+        #     if distance <= 100: #10cm 이내에 물체가 탐지되었을 때 
+        #         robot.straight(-150)
+        #         robot.turn(-100)
+        #     robot.straight(80) #공을 인지하지 못했을 때 기본 알고리즘 
+        #     robot.turn(30)
+             
 
             time.sleep_ms(50)
     except:
