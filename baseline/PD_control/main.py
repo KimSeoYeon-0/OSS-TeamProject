@@ -11,8 +11,11 @@ import time
 #==========[Initialize]==========
 #==========[sensors]==========
 ev3 = EV3Brick()
+gyro = GyroSensor(Port.S1)
 ser = UARTDevice(Port.S2, baudrate=115200)
+color = ColorSensor(Port.S3)
 ultra = UltrasonicSensor(Port.S4)
+
 
 #==========[motors]==========
 
@@ -57,6 +60,14 @@ previous_error = 0
 # #==========[main loop]==========
 while True:
     try:
+        color_threshold = color.rgb()
+        color_threshold = list(color_threshold)
+        distance = ultra.distance() 
+        if distance <= 100:
+            robot.straight(-150)
+            robot.turn(-100)
+        robot.straight(80)
+        robot.turn(30)
         data = ser.read_all()
         filter_result = process_uart_data(data)
         if filter_result[0]!= -1 and filter_result[1]!= -1:
@@ -65,5 +76,3 @@ while True:
         wait(10)
     except:
         pass
-        
-
