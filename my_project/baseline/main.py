@@ -7,6 +7,9 @@ from pybricks.tools import wait, StopWatch, DataLog
 from pybricks.robotics import DriveBase
 from pybricks.media.ev3dev import SoundFile, ImageFile
 import time
+import threading
+
+#스레드 사용
 
 #==========[Initialize]==========
 #==========[sensors]==========
@@ -47,7 +50,6 @@ def turn2(target_angle, power):
             robot.drive(0, power)  # 시계 방향 회전
         else:
             robot.drive(0, -power)  # 반시계 방향 회전
-
 
 #==========[camera_chase]==========
 def process_uart_data(data):
@@ -95,69 +97,73 @@ def shoot(command):
         shooting_motor.run_until_stalled(-100,Stop.COAST,duty_limit=50) 
     elif command == 'shoot':
         #shooting
-        shooting_motor.run(3000)
+        shooting_motor.run(2500)
         time.sleep(0.25)
         shooting_motor.stop()
 
-
-#==========[setup]==========
-ev3.speaker.beep()
-threshold = 70
-previous_error = 0
-gyro.reset_angle(0)
-time.sleep(0.5)
-#==========[zero set position setting]==========
-shoot('zero') #shoot 모터가 안쪽이고,
-grab('motion3') #grab 모터가 바깥쪽이므로 shoot먼저 세팅 후 grab을 세팅해야한다
-time.sleep(1)
-grab('motion1') #공을 잡기 위한 높이로 열기
-
-print("Zero set postion completed")
-
-#==========[main loop]==========
-while True:
-    data = ser.read_all()
-    # 데이터 처리 및 결과 필터링
-    try:
-        filter_result = process_uart_data(data)
-        #filter_result[0] : x, filter_result[1] : y
-        if filter_result[0]!= -1 and filter_result[1]!= -1:
-            print(1)
-            if filter_result[1] > 105: #공이 카메라 화면 기준으로 아래에 위치 = 로봇에 가까워졌다
-                robot.straight(100) #앞으로 이동
-                grab('motion3') #공을 잡기
-                time.sleep(1) #동작간 딜레이
-                turn2(0,100) #정면(상대방 진영)바라보기
-                time.sleep(1) #동작간 딜레이
-                grab('motion1') #슛을 위한 열기
-                time.sleep(0.5) #동작간 딜레이
-                shoot('shoot') #공 날리기
-                time.sleep(0.5) #동작간 딜레이
-                shoot('zero')
-                grab('motion2') 
-            else: #공이 카메라 화면 기준 멀리 위치해 있으면 chase한다 
-                pd_control(filter_result[0], kp=0.5, kd=0.3, power=100)
-        else: 
-            distance = ultra.distance()
-            if distance <= 100: #10cm 이내에 물체가 탐지되었을 때 
-                    robot.straight(-100)
-                    robot.turn(50)
-            else:
-                robot.straight(80) #공을 인지하지 못했을 때 기본 알고리즘 
-                robot.turn(30)
-            
-            time.sleep_ms(50)
-    except:
-        pass
-
-while True:
-    try:
+def ball_tracking():
+    global previous_error
+    while True:
         data = ser.read_all()
-        filter_result = process_uart_data(data)
-        if filter_result[0]!= -1 and filter_result[1]!= -1:
-            print(filter_result)
-            pd_control(filter_result[0], kp=0.5, kd=0.1, power=100)
-        wait(10)
-    except:
-        pass
-        
+        # 데이터 처리 및 결과 필터링
+        try:
+            filter_result = process_uart_data(data)
+            #filter_result[0] : x, filter_result[1] : y
+            if filter_result[0]!= -1 and filter_result[1]!= -1:
+                print(1)
+                if filter_result[1] > 105: #공이 카메라 화면 기준으로 아래에 위치 = 로봇에 가까워졌다
+                    robot.straight(100) #앞으로 이동
+                    grab('motion3') #공을 잡기
+                    time.sleep(1) #동작간 딜레이
+                    turn2(0,100) #정면(상대방 진영)바라보기
+                    time.sleep(1) #동작간 딜레이
+                    grab('motion1') #슛을 위한 열기
+                    time.sleep(0.5) #동작간 딜레이
+                    shoot('shoot') #공 날리기
+                    time.sleep(0.5) #동작간 딜레이
+                    shoot('zero')
+                    grab('motion2') 
+                else: #공이 카메라 화면 기준 멀리 위치해 있으면 chase한다 
+                    pd_control(filter_result[0], kp=0.5, kd=0.3, power=100)
+                time.sleep_ms(50)
+        except:
+            pass
+
+def ultra_distance():
+    while True:
+        try:
+            distance = ultra.distance()
+            if distance <= 100:  # 10cm 이내
+                robot.straight(-150)
+                robot.turn(-100)
+            else:
+                robot.straight(80)
+                robot.turn(30)
+            time.sleep(0.05)  # 초음파 센서 딜레이 추가
+        except Exception as e:
+            print("Ultrasonic thread error:", e)
+
+# 메인 함수
+if __name__ == "__main__":
+    # 초기 설정
+    ev3.speaker.beep()
+    threshold = 70
+    previous_error = 0
+    gyro.reset_angle(0)
+    shoot('zero')  # 슈팅 모터 초기화
+    grab('motion3')  # 잡기 모터 초기화
+    time.sleep(1)
+    grab('motion1')  # 공 잡기 높이로 열기
+    print("Zero set position completed")
+
+    # 스레드 생성 및 시작
+    ball_thread = threading.Thread(target=ball_tracking)
+    ultra_thread = threading.Thread(target=ultra_distance)
+
+    ball_thread.start()
+    ultra_thread.start()
+
+    # 메인 스레드에서 루프 실행 (종료 방지)
+    while True:
+        time.sleep(1)  # 메인 스레드 유지
+
