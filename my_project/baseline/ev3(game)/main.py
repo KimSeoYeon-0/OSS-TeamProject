@@ -35,13 +35,11 @@ def turn(target_angle, power):
 
 #==========[target_angle turn(gyro)]==========
 def turn2(target_angle, power):
-
     while True:
         angle = gyro.angle()
-        if abs(angle - target_angle) < 2:  # 허용 오차를 ±2도로 설정
+        if abs(angle - target_angle) < 2:
             robot.stop()
             break
-
         # 목표 각도보다 크면 반시계 방향, 작으면 시계 방향
         if angle < target_angle:
             robot.drive(0, power)  # 시계 방향 회전
@@ -56,7 +54,6 @@ def process_uart_data(data):
         data_str = data.decode().strip()
         if not data_str:
             pass
-
         # 문자열에서 리스트 파싱
         data_str = data_str.strip("[]")
         parsed_list = [int(value.strip()) for value in data_str.split(",")]
@@ -79,12 +76,12 @@ def pd_control(cam_data, kp, kd, power):
 def grab(command):
     if command == 'motion3': #공 잡기
         #close
-        grab_motor.run_until_stalled(1000,Stop.COAST,duty_limit=50) #100 = 속도 
+        grab_motor.run_until_stalled(1000,Stop.COAST,duty_limit=40) #100 = 속도 
         #set_zero point
         grab_motor.reset_angle(0)
     elif command == 'motion1': #집게 열기
         #open1
-        grab_motor.run_until_stalled(-100,Stop.COAST,duty_limit=50) # -100 -> 역방향
+        grab_motor.run_until_stalled(-100,Stop.COAST,duty_limit=40) # -100 -> 역방향
     elif command == 'motion2': #공을 잡은 후 집게 위치를 바꾸기
         #open2
         grab_motor.run_target(500,-100) #(속도, 각도)
@@ -95,9 +92,39 @@ def shoot(command):
         shooting_motor.run_until_stalled(-100,Stop.COAST,duty_limit=50) 
     elif command == 'shoot':
         #shooting
-        shooting_motor.run(3000)
+        shooting_motor.run(2500)
         time.sleep(0.25)
         shooting_motor.stop()
+        
+def search_for_ball():
+    print("공을 탐색 중...")
+    robot.straight(40)
+    robot.turn(20)
+    start_time = time.time()
+    while True:  
+        data = ser.read_all()
+        filter_result = process_uart_data(data)
+        if filter_result[0] != -1 and filter_result[1] != -1:
+            pd_control(filter_result[0], kp=0.5, kd=0.3, power=100)
+           
+            return filter_result
+        print("공을 찾지 못했습니다.")
+        return [-1, -1]
+
+def ultra_distance():
+    while True:
+        data = ser.read_all()
+        filter_result = process_uart_data(data)
+        distance = ultra.distance()
+        if distance <= 100:
+            robot.straight(-100)
+            robot.turn(-50)
+            time.sleep(0.25)
+        else:
+            robot.straight(80)
+            robot.turn(30)
+            time.sleep(0.25)
+            return filter_result
 
 
 #==========[setup]==========
@@ -117,38 +144,30 @@ print("Zero set postion completed")
 #==========[main loop]==========
 while True:
     data = ser.read_all()
-    # 데이터 처리 및 결과 필터링
-    try:
-        filter_result = process_uart_data(data)
-        #filter_result[0] : x, filter_result[1] : y
-        if filter_result[0]!= -1 and filter_result[1]!= -1:
-            print(1)
-            if filter_result[1] > 105: #공이 카메라 화면 기준으로 아래에 위치 = 로봇에 가까워졌다
-                robot.straight(100) #앞으로 이동
-                grab('motion3') #공을 잡기
-                time.sleep(1) #동작간 딜레이
-                turn2(0,100) #정면(상대방 진영)바라보기
-                time.sleep(1) #동작간 딜레이
-                grab('motion1') #슛을 위한 열기
-                time.sleep(0.5) #동작간 딜레이
-                shoot('shoot') #공 날리기
-                time.sleep(0.5) #동작간 딜레이
-                shoot('zero')
-                grab('motion2') 
-            else: #공이 카메라 화면 기준 멀리 위치해 있으면 chase한다 
-                pd_control(filter_result[0], kp=0.5, kd=0.3, power=100)
-        else: 
-            distance = ultra.distance()
-            if distance <= 100: #10cm 이내에 물체가 탐지되었을 때 
-                    robot.straight(-100)
-                    robot.turn(50)
-            else:
-                robot.straight(80) #공을 인지하지 못했을 때 기본 알고리즘 
-                robot.turn(30)
+    filter_result = process_uart_data(data)
+    if filter_result[0]!= -1 and filter_result[1]!= -1:
+        print(filter_result)
+        if filter_result[1] > 100: #공이 카메라 화면 기준으로 아래에 위치 = 로봇에 가까워졌다
+            robot.straight(100) #앞으로 이동
+            grab('motion3') #공을 잡기
+            time.sleep(0.5) #동작간 딜레이
+            turn2(0,100) #정면(상대방 진영)바라보기
+            time.sleep(2) #동작간 딜레이
+            grab('motion1') #슛을 위한 열기
+            time.sleep(0.5) #동작간 딜레이
+            shoot('shoot') #공 날리기
+            time.sleep(0.5) #동작간 딜레이
+            shoot('zero')
+            grab('motion2')
+            continue 
+        else: #공이 카메라 화면 기준 멀리 위치해 있으면 chase한다 
+            pd_control(filter_result[0], kp=0.5, kd=0.3, power=100)
+    else:
+        filter_result = search_for_ball()
+        if filter_result[0] != -1 and filter_result[1] != -1:
+            pd_control(filter_result[0], kp=0.5, kd=0.3, power=100)
             
-            time.sleep_ms(50)
-    except:
-        pass
+    time.sleep_ms(50)
 
 while True:
     try:
